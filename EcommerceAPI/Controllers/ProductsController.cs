@@ -2,10 +2,12 @@
 using Microsoft.EntityFrameworkCore;
 using EcommerceAPI.Data;
 using EcommerceAPI.Models;
-using EcommerceAPI.DTOs; // Thêm dòng này
+using EcommerceAPI.DTOs;
+using Microsoft.AspNetCore.Authorization; // Thêm dòng này
 
 namespace EcommerceAPI.Controllers
 {
+    [Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class ProductsController : ControllerBase

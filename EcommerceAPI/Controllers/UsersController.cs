@@ -1,15 +1,14 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using EcommerceAPI.Data;
 using EcommerceAPI.Models;
+using EcommerceAPI.DTOs;
+using Microsoft.CodeAnalysis.Scripting;
+using Microsoft.AspNetCore.Authorization;
 
 namespace EcommerceAPI.Controllers
 {
+    [Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class UsersController : ControllerBase
@@ -22,87 +21,80 @@ namespace EcommerceAPI.Controllers
         }
 
         // GET: api/Users
+        // Lấy danh sách toàn bộ người dùng
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<User>>> GetUsers()
+        public async Task<ActionResult<IEnumerable<UserResponseDto>>> GetAllUsers()
         {
-            return await _context.Users.ToListAsync();
-        }
-
-        // GET: api/Users/5
-        [HttpGet("{id}")]
-        public async Task<ActionResult<User>> GetUser(Guid id)
-        {
-            var user = await _context.Users.FindAsync(id);
-
-            if (user == null)
-            {
-                return NotFound();
-            }
-
-            return user;
-        }
-
-        // PUT: api/Users/5
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPut("{id}")]
-        public async Task<IActionResult> PutUser(Guid id, User user)
-        {
-            if (id != user.Id)
-            {
-                return BadRequest();
-            }
-
-            _context.Entry(user).State = EntityState.Modified;
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!UserExists(id))
+            return await _context.Users
+                .Select(u => new UserResponseDto
                 {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
-
-            return NoContent();
+                    Id = u.Id,
+                    Email = u.Email,
+                    FullName = u.FullName,
+                    IsActive = u.IsActive
+                }).ToListAsync();
         }
 
         // POST: api/Users
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
+        // Chức năng: Admin thêm người dùng mới (Có thể cấp quyền Admin hoặc Staff)
         [HttpPost]
-        public async Task<ActionResult<User>> PostUser(User user)
+        public async Task<IActionResult> CreateUser([FromBody] AdminCreateUserDto dto)
         {
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction("GetUser", new { id = user.Id }, user);
-        }
-
-        // DELETE: api/Users/5
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteUser(Guid id)
-        {
-            var user = await _context.Users.FindAsync(id);
-            if (user == null)
+            // Kiểm tra trùng Email
+            if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
             {
-                return NotFound();
+                return BadRequest("Email này đã tồn tại trong hệ thống.");
             }
 
-            _context.Users.Remove(user);
+            // Kiểm tra Role có hợp lệ không
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name.ToLower() == dto.RoleName.ToLower());
+            if (role == null)
+            {
+                return BadRequest($"Quyền '{dto.RoleName}' không tồn tại trong hệ thống.");
+            }
+
+            // Tạo User
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = dto.Email,
+                FullName = dto.FullName,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                IsActive = true
+            };
+
+            _context.Users.Add(user);
+
+            // Cấp quyền
+            _context.UserRoles.Add(new UserRole
+            {
+                UserId = user.Id,
+                RoleId = role.Id
+            });
+
             await _context.SaveChangesAsync();
 
-            return NoContent();
+            return Ok(new { Message = $"Đã tạo thành công tài khoản {dto.Email} với quyền {role.Name}." });
         }
 
-        private bool UserExists(Guid id)
+        // PATCH: api/Users/{id}/toggle-lock
+        // Chức năng: Khóa / Mở khóa tài khoản (Cấm đăng nhập)
+        [HttpPatch("{id}/toggle-lock")]
+        public async Task<IActionResult> ToggleLockUser(Guid id)
         {
-            return _context.Users.Any(e => e.Id == id);
+            var user = await _context.Users.FindAsync(id);
+            if (user == null) return NotFound("Không tìm thấy người dùng.");
+
+            // Đảo ngược trạng thái
+            user.IsActive = !user.IsActive;
+
+            // Nếu bạn có cột UpdatedBy trong AuditableEntity, bạn có thể lưu ID của Admin thao tác vào đây
+            // user.UpdatedBy = "Admin ID..."; 
+
+            await _context.SaveChangesAsync();
+
+            string statusMessage = user.IsActive ? "Đã MỞ KHÓA" : "Đã KHÓA";
+            return Ok(new { Message = $"Tài khoản {user.Email} {statusMessage} thành công." });
         }
     }
 }

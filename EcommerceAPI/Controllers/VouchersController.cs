@@ -1,12 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using EcommerceAPI.Data;
 using EcommerceAPI.Models;
+using EcommerceAPI.DTOs;
 
 namespace EcommerceAPI.Controllers
 {
@@ -22,76 +18,136 @@ namespace EcommerceAPI.Controllers
         }
 
         // GET: api/Vouchers
+        // Lấy danh sách mã giảm giá
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Voucher>>> GetVouchers()
+        public async Task<ActionResult<IEnumerable<VoucherResponseDto>>> GetVouchers()
         {
-            return await _context.Vouchers.ToListAsync();
+            return await _context.Vouchers
+                .Select(v => new VoucherResponseDto
+                {
+                    Id = v.Id,
+                    Code = v.Code,
+                    DiscountType = v.DiscountType,
+                    DiscountValue = v.DiscountValue,
+                    MinOrderValue = v.MinOrderValue,
+                    MaxDiscount = v.MaxDiscount,
+                    MaxUses = v.MaxUses,
+                    UsedCount = v.UsedCount,
+                    ExpiryDate = v.ExpiryDate,
+                })
+                .ToListAsync();
         }
 
-        // GET: api/Vouchers/5
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Voucher>> GetVoucher(Guid id)
+        // POST: api/Vouchers/validate
+        // 👉 Khách hàng nhập mã ở Giỏ hàng
+        [HttpPost("validate")]
+        public async Task<IActionResult> ValidateVoucher([FromBody] VoucherValidateRequestDto request)
         {
-            var voucher = await _context.Vouchers.FindAsync(id);
+            // 1. Tìm Voucher trong hệ thống (Không phân biệt hoa thường)
+            var voucher = await _context.Vouchers
+                .FirstOrDefaultAsync(v => v.Code.ToLower() == request.Code.ToLower());
 
             if (voucher == null)
+                return NotFound("Mã giảm giá không tồn tại.");
+
+            // 2. Kiểm tra hạn sử dụng và số lượng
+            if (voucher.ExpiryDate < DateTime.UtcNow)
+                return BadRequest("Mã giảm giá đã hết hạn.");
+
+            if (voucher.MaxUses > 0 && voucher.UsedCount >= voucher.MaxUses)
+                return BadRequest("Mã giảm giá đã hết lượt sử dụng.");
+
+            // 3. Kiểm tra điều kiện đơn hàng tối thiểu
+            if (request.OrderTotal < voucher.MinOrderValue)
             {
-                return NotFound();
+                return BadRequest($"Đơn hàng chưa đạt mức tối thiểu. Cần mua thêm {voucher.MinOrderValue - request.OrderTotal:N0}đ để sử dụng mã này.");
             }
 
-            return voucher;
-        }
+            // 4. Kiểm tra User này đã dùng mã này bao giờ chưa
+            bool isUserAlreadyUsed = await _context.UserVouchers
+                .AnyAsync(uv => uv.VoucherId == voucher.Id && uv.UserId == request.UserId && uv.IsUsed == true);
 
-        // PUT: api/Vouchers/5
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPut("{id}")]
-        public async Task<IActionResult> PutVoucher(Guid id, Voucher voucher)
-        {
-            if (id != voucher.Id)
+            if (isUserAlreadyUsed)
             {
-                return BadRequest();
+                return BadRequest("Bạn đã sử dụng mã giảm giá này rồi.");
             }
 
-            _context.Entry(voucher).State = EntityState.Modified;
+            // 5. Tính toán số tiền được giảm thực tế
+            decimal actualDiscount = 0;
 
-            try
+            if (voucher.DiscountType == "Percentage")
             {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!VoucherExists(id))
+                // Giảm theo % của tổng đơn
+                actualDiscount = request.OrderTotal * (voucher.DiscountValue / 100);
+
+                // Cắt phần vượt trần (MaxDiscount)
+                if (voucher.MaxDiscount > 0 && actualDiscount > voucher.MaxDiscount)
                 {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
+                    actualDiscount = voucher.MaxDiscount;
                 }
             }
+            else // "FixedAmount" - Giảm tiền mặt
+            {
+                actualDiscount = voucher.DiscountValue;
+            }
 
-            return NoContent();
+            // Đảm bảo không giảm lố âm tiền đơn hàng
+            if (actualDiscount > request.OrderTotal)
+            {
+                actualDiscount = request.OrderTotal;
+            }
+
+            return Ok(new
+            {
+                Message = "Áp dụng mã thành công!",
+                VoucherId = voucher.Id,
+                DiscountApplied = actualDiscount,
+                FinalTotal = request.OrderTotal - actualDiscount
+            });
         }
 
         // POST: api/Vouchers
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
+        // Tạo mã giảm giá mới
         [HttpPost]
-        public async Task<ActionResult<Voucher>> PostVoucher(Voucher voucher)
+        public async Task<ActionResult<VoucherResponseDto>> PostVoucher(VoucherCreateDto dto)
         {
+            // Kiểm tra trùng lặp Mã Code
+            bool isCodeExist = await _context.Vouchers.AnyAsync(v => v.Code.ToLower() == dto.Code.ToLower());
+            if (isCodeExist)
+            {
+                return BadRequest("Mã Code này đã tồn tại trong hệ thống. Vui lòng nhập mã khác.");
+            }
+
+            var voucher = new Voucher
+            {
+                Id = Guid.NewGuid(),
+                Code = dto.Code.ToUpper(), // Chuẩn hóa viết hoa toàn bộ
+                DiscountType = dto.DiscountType,
+                DiscountValue = dto.DiscountValue,
+                MinOrderValue = dto.MinOrderValue,
+                MaxDiscount = dto.MaxDiscount,
+                MaxUses = dto.MaxUses,
+                UsedCount = 0, // Mặc định lúc tạo mới chưa ai dùng
+                ExpiryDate = dto.ExpiryDate
+            };
+
             _context.Vouchers.Add(voucher);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetVoucher", new { id = voucher.Id }, voucher);
+            return CreatedAtAction(nameof(GetVouchers), new { id = voucher.Id }, voucher);
         }
 
-        // DELETE: api/Vouchers/5
+        // DELETE: api/Vouchers/{id}
+        // Chỉ cho phép xóa vĩnh viễn nếu chưa có khách hàng nào dùng
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteVoucher(Guid id)
+        public async Task<IActionResult> HardDeleteVoucher(Guid id)
         {
             var voucher = await _context.Vouchers.FindAsync(id);
-            if (voucher == null)
+            if (voucher == null) return NotFound();
+
+            if (voucher.UsedCount > 0)
             {
-                return NotFound();
+                return BadRequest("Không thể xóa vĩnh viễn mã giảm giá đã có người sử dụng để bảo toàn lịch sử đơn hàng.");
             }
 
             _context.Vouchers.Remove(voucher);
@@ -100,9 +156,20 @@ namespace EcommerceAPI.Controllers
             return NoContent();
         }
 
-        private bool VoucherExists(Guid id)
+        // PATCH: api/Vouchers/{id}/toggle-status
+        // [TÙY CHỌN] Nếu Model Voucher của bạn có thuộc tính bool IsActive thì bỏ comment hàm này
+        /*
+        [HttpPatch("{id}/toggle-status")]
+        public async Task<IActionResult> ToggleVoucherStatus(Guid id)
         {
-            return _context.Vouchers.Any(e => e.Id == id);
+            var voucher = await _context.Vouchers.FindAsync(id);
+            if (voucher == null) return NotFound();
+
+            voucher.IsActive = !voucher.IsActive;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = $"Mã giảm giá {voucher.Code} đã {(voucher.IsActive ? "kích hoạt" : "bị khóa")}." });
         }
+        */
     }
 }
