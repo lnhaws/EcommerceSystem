@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Authorization; // Thêm dòng này
 
 namespace EcommerceAPI.Controllers
 {
-    [Authorize]
+    //[Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class ProductsController : ControllerBase
