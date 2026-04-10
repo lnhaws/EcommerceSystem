@@ -7,9 +7,9 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Đăng ký SQL Server
+// Đăng ký PostgreSQL
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // =========================================================
 // 1. CẤU HÌNH BẢO MẬT JWT (Lấy chìa khóa từ appsettings.json)
@@ -72,6 +72,26 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+// --- BẮT ĐẦU: TỰ ĐỘNG CẬP NHẬT DATABASE KHI CHẠY ---
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<AppDbContext>();
+        if (context.Database.GetPendingMigrations().Any())
+        {
+            context.Database.Migrate();
+        }
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Đã xảy ra lỗi khi tự động cập nhật Database.");
+    }
+}
+// --- KẾT THÚC ---
 
 app.UseSwagger();
 app.UseSwaggerUI();
