@@ -84,6 +84,7 @@ using (var scope = app.Services.CreateScope())
         {
             context.Database.Migrate();
         }
+        DbSeeder.Seed(context);
     }
     catch (Exception ex)
     {
