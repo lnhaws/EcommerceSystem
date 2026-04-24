@@ -7,9 +7,9 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Đăng ký PostgreSQL
+// Đăng ký SQL Server
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // =========================================================
 // 1. CẤU HÌNH BẢO MẬT JWT (Lấy chìa khóa từ appsettings.json)

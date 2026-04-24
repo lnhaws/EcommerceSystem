@@ -188,9 +188,8 @@ namespace EcommerceAPI.Controllers
         {
             return _context.Products.Any(e => e.Id == id);
         }
-        // DELETE: api/Products/bulk
-        // Xóa nhiều sản phẩm cùng lúc
-        [HttpDelete("bulk")]
+        // POST: api/Products/delete-bulk
+        [HttpPost("delete-bulk")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteProductsBulk([FromBody] List<Guid> ids)
         {
@@ -199,7 +198,6 @@ namespace EcommerceAPI.Controllers
                 return BadRequest("Vui lòng cung cấp danh sách ID cần xóa.");
             }
 
-            // 1. Tìm tất cả các sản phẩm có Id nằm trong danh sách gửi lên
             var productsToDelete = await _context.Products
                 .Where(p => ids.Contains(p.Id))
                 .ToListAsync();
@@ -209,13 +207,10 @@ namespace EcommerceAPI.Controllers
                 return NotFound("Không tìm thấy sản phẩm nào khớp với danh sách ID.");
             }
 
-            // 2. Dùng RemoveRange để xóa toàn bộ
             _context.Products.RemoveRange(productsToDelete);
-
-            // 3. Thực thi xuống Database
             await _context.SaveChangesAsync();
 
-            return NoContent(); // Trả về 204 Báo hiệu xóa thành công
+            return NoContent();
         }
     }
 }
