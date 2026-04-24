@@ -8,6 +8,7 @@ using EcommerceAPI.Data;
 using EcommerceAPI.Models;
 using EcommerceAPI.DTOs;
 using Microsoft.CodeAnalysis.Scripting;
+using Microsoft.AspNetCore.Authorization;
 namespace EcommerceAPI.Controllers
 {
     [Route("api/[controller]")]
@@ -143,6 +144,7 @@ namespace EcommerceAPI.Controllers
         // GET: api/Users
         // Chỉ Admin mới được xem danh sách toàn bộ User
         [HttpGet]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<IEnumerable<UserResponseDto>>> GetAllUsers()
         {
             return await _context.Users

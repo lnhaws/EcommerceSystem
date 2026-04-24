@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using EcommerceAPI.Data;
 using EcommerceAPI.Models;
 using EcommerceAPI.DTOs;
+using Microsoft.AspNetCore.Authorization;
 
 namespace EcommerceAPI.Controllers
 {
@@ -18,6 +19,7 @@ namespace EcommerceAPI.Controllers
         }
 
         [HttpPost("checkout")]
+        [Authorize]
         public async Task<IActionResult> Checkout([FromBody] OrderCreateDto request)
         {
             if (request.Items == null || !request.Items.Any())

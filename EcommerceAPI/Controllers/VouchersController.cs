@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using EcommerceAPI.Data;
 using EcommerceAPI.Models;
 using EcommerceAPI.DTOs;
+using Microsoft.AspNetCore.Authorization;
 
 namespace EcommerceAPI.Controllers
 {
@@ -41,6 +42,7 @@ namespace EcommerceAPI.Controllers
         // POST: api/Vouchers/validate
         // 👉 Khách hàng nhập mã ở Giỏ hàng
         [HttpPost("validate")]
+        [Authorize]
         public async Task<IActionResult> ValidateVoucher([FromBody] VoucherValidateRequestDto request)
         {
             // 1. Tìm Voucher trong hệ thống (Không phân biệt hoa thường)
@@ -109,6 +111,7 @@ namespace EcommerceAPI.Controllers
         // POST: api/Vouchers
         // Tạo mã giảm giá mới
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<VoucherResponseDto>> PostVoucher(VoucherCreateDto dto)
         {
             // Kiểm tra trùng lặp Mã Code
@@ -140,6 +143,7 @@ namespace EcommerceAPI.Controllers
         // DELETE: api/Vouchers/{id}
         // Chỉ cho phép xóa vĩnh viễn nếu chưa có khách hàng nào dùng
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> HardDeleteVoucher(Guid id)
         {
             var voucher = await _context.Vouchers.FindAsync(id);

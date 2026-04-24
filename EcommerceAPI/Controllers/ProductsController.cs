@@ -61,6 +61,7 @@ namespace EcommerceAPI.Controllers
 
         // PUT: api/Products/5
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> PutProduct(Guid id, ProductUpdateDto dto)
         {
             // 1. Tìm sản phẩm cũ trong DB
@@ -90,6 +91,7 @@ namespace EcommerceAPI.Controllers
 
         // POST: api/Products
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<ProductResponseDto>> PostProduct(ProductCreateDto dto)
         {
             // 1. Map từ DTO sang Entity thực tế
@@ -127,6 +129,7 @@ namespace EcommerceAPI.Controllers
         // POST: api/Products/bulk
         // Thêm nhiều sản phẩm cùng lúc
         [HttpPost("bulk")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<IEnumerable<ProductResponseDto>>> PostProductsBulk(IEnumerable<ProductCreateDto> dtos)
         {
             if (dtos == null || !dtos.Any())
@@ -169,6 +172,7 @@ namespace EcommerceAPI.Controllers
 
         // DELETE: api/Products/5 (Hàm này giữ nguyên)
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteProduct(Guid id)
         {
             var product = await _context.Products.FindAsync(id);
@@ -187,6 +191,7 @@ namespace EcommerceAPI.Controllers
         // DELETE: api/Products/bulk
         // Xóa nhiều sản phẩm cùng lúc
         [HttpDelete("bulk")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteProductsBulk([FromBody] List<Guid> ids)
         {
             if (ids == null || !ids.Any())

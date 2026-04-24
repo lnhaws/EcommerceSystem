@@ -56,6 +56,7 @@ namespace EcommerceAPI.Controllers
 
         // PUT: api/Categories/5
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> PutCategory(int id, CategoryUpdateDto dto)
         {
             var category = await _context.Categories.FindAsync(id);
@@ -88,6 +89,7 @@ namespace EcommerceAPI.Controllers
 
         // POST: api/Categories
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<CategoryResponseDto>> PostCategory(CategoryCreateDto dto)
         {
             var category = new Category
@@ -115,6 +117,7 @@ namespace EcommerceAPI.Controllers
         // 1. CHỨC NĂNG ẨN/HIỆN (SOFT-DELETE / RESTORE)
         // PATCH: api/Categories/{id}/toggle-status
         [HttpPatch("{id}/toggle-status")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> ToggleCategoryStatus(int id)
         {
             var category = await _context.Categories.FindAsync(id);
@@ -142,6 +145,7 @@ namespace EcommerceAPI.Controllers
         // 2. CHỨC NĂNG XÓA VĨNH VIỄN (HARD-DELETE)
         // DELETE: api/Categories/{id}
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> HardDeleteCategory(int id)
         {
             var category = await _context.Categories.FindAsync(id);
