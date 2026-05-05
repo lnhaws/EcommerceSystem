@@ -3,11 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using EcommerceAPI.Data;
 using EcommerceAPI.Models;
 using EcommerceAPI.DTOs;
-using Microsoft.AspNetCore.Authorization; // Thêm dòng này
+using Microsoft.AspNetCore.Authorization;
 
 namespace EcommerceAPI.Controllers
 {
-    //[Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class ProductsController : ControllerBase
@@ -23,7 +22,6 @@ namespace EcommerceAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts()
         {
-            // Dùng .Select() để map trực tiếp từ Product sang ProductResponseDto
             return await _context.Products
                 .Select(p => new ProductResponseDto
                 {
@@ -32,7 +30,19 @@ namespace EcommerceAPI.Controllers
                     BasePrice = p.BasePrice,
                     AverageRating = p.AverageRating,
                     Status = p.Status,
-                    CategoryId = p.CategoryId
+                    CategoryId = p.CategoryId,
+
+                    // Lấy Tên danh mục từ bảng Categories
+                    CategoryName = _context.Categories
+                        .Where(c => c.Id == p.CategoryId)
+                        .Select(c => c.Name)
+                        .FirstOrDefault() ?? "Không xác định",
+
+                    // Lấy Ảnh chính (IsMain = true) của sản phẩm từ bảng ProductImages
+                    ImageUrl = _context.ProductImages
+                        .Where(i => i.ProductId == p.Id && i.IsMain)
+                        .Select(i => i.ImageUrl)
+                        .FirstOrDefault()
                 })
                 .ToListAsync();
         }
@@ -50,7 +60,19 @@ namespace EcommerceAPI.Controllers
                     BasePrice = p.BasePrice,
                     AverageRating = p.AverageRating,
                     Status = p.Status,
-                    CategoryId = p.CategoryId
+                    CategoryId = p.CategoryId,
+
+                    // Bổ sung lấy Tên danh mục
+                    CategoryName = _context.Categories
+                        .Where(c => c.Id == p.CategoryId)
+                        .Select(c => c.Name)
+                        .FirstOrDefault() ?? "Không xác định",
+
+                    // Bổ sung lấy Ảnh
+                    ImageUrl = _context.ProductImages
+                        .Where(i => i.ProductId == p.Id && i.IsMain)
+                        .Select(i => i.ImageUrl)
+                        .FirstOrDefault()
                 })
                 .FirstOrDefaultAsync();
 
@@ -64,17 +86,13 @@ namespace EcommerceAPI.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> PutProduct(Guid id, ProductUpdateDto dto)
         {
-            // 1. Tìm sản phẩm cũ trong DB
             var product = await _context.Products.FindAsync(id);
             if (product == null) return NotFound();
 
-            // 2. Chỉ cập nhật những trường được phép
             product.Name = dto.Name;
             product.BasePrice = dto.BasePrice;
             product.CategoryId = dto.CategoryId;
             product.Status = dto.Status;
-
-            // Hệ thống sẽ tự động cập nhật UpdatedAt nhờ đoạn code ở AppDbContext
 
             try
             {
@@ -94,7 +112,7 @@ namespace EcommerceAPI.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<ProductResponseDto>> PostProduct(ProductCreateDto dto)
         {
-            // 1. Map từ DTO sang Entity thực tế
+            // 1. Tạo Sản phẩm mới
             var product = new Product
             {
                 Id = Guid.NewGuid(),
@@ -105,11 +123,23 @@ namespace EcommerceAPI.Controllers
                 Status = "Active", // Mặc định khi tạo mới
                 AverageRating = 0,
                 TotalReviews = 0
-                // CreatedAt sẽ tự động sinh nhờ AppDbContext
             };
 
-            // 2. Lưu vào DB
             _context.Products.Add(product);
+
+            // 2. NẾU CÓ LINK ẢNH TỪ FRONTEND GỬI LÊN -> TẠO THÊM RECORD ẢNH
+            if (!string.IsNullOrEmpty(dto.ImageUrl))
+            {
+                _context.ProductImages.Add(new ProductImage
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = product.Id,
+                    ImageUrl = dto.ImageUrl,
+                    IsMain = true, // Đánh dấu đây là ảnh đại diện
+                    DisplayOrder = 1
+                });
+            }
+
             await _context.SaveChangesAsync();
 
             // 3. Trả về DTO
@@ -120,14 +150,14 @@ namespace EcommerceAPI.Controllers
                 BasePrice = product.BasePrice,
                 AverageRating = product.AverageRating,
                 Status = product.Status,
-                CategoryId = product.CategoryId
+                CategoryId = product.CategoryId,
+                ImageUrl = dto.ImageUrl // Trả về ảnh luôn để Frontend cập nhật ngay
             };
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, responseDto);
         }
 
         // POST: api/Products/bulk
-        // Thêm nhiều sản phẩm cùng lúc
         [HttpPost("bulk")]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<IEnumerable<ProductResponseDto>>> PostProductsBulk(IEnumerable<ProductCreateDto> dtos)
@@ -137,7 +167,6 @@ namespace EcommerceAPI.Controllers
                 return BadRequest("Danh sách sản phẩm trống.");
             }
 
-            // 1. Chuyển đổi toàn bộ DTO thành Entity thực thể
             var products = dtos.Select(dto => new Product
             {
                 Id = Guid.NewGuid(),
@@ -150,13 +179,9 @@ namespace EcommerceAPI.Controllers
                 TotalReviews = 0
             }).ToList();
 
-            // 2. Dùng AddRange để thêm toàn bộ vào bộ nhớ tạm của EF Core
             _context.Products.AddRange(products);
-
-            // 3. Lưu tất cả xuống Database trong 1 lần duy nhất (Rất tối ưu)
             await _context.SaveChangesAsync();
 
-            // 4. Map ngược lại ra DTO để trả về cho người dùng xem
             var responseDtos = products.Select(p => new ProductResponseDto
             {
                 Id = p.Id,
@@ -170,7 +195,7 @@ namespace EcommerceAPI.Controllers
             return Ok(responseDtos);
         }
 
-        // DELETE: api/Products/5 (Hàm này giữ nguyên)
+        // DELETE: api/Products/5
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteProduct(Guid id)
@@ -178,6 +203,8 @@ namespace EcommerceAPI.Controllers
             var product = await _context.Products.FindAsync(id);
             if (product == null) return NotFound();
 
+            // Lưu ý: Nếu xóa Product thì EF Core sẽ tự động xóa luôn các ProductImage liên quan
+            // (Nếu bạn đã setup Cascade Delete trong Database)
             _context.Products.Remove(product);
             await _context.SaveChangesAsync();
 
@@ -188,6 +215,7 @@ namespace EcommerceAPI.Controllers
         {
             return _context.Products.Any(e => e.Id == id);
         }
+
         // POST: api/Products/delete-bulk
         [HttpPost("delete-bulk")]
         [Authorize(Roles = "Admin")]

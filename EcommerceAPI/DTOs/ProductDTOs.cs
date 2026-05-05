@@ -9,6 +9,8 @@ public class ProductResponseDto
     public double AverageRating { get; set; }
     public string Status { get; set; } = string.Empty;
     public int CategoryId { get; set; }
+    public string CategoryName { get; set; } = string.Empty;
+    public string? ImageUrl { get; set; }
 }
 
 // 2. DTO dùng để client gửi dữ liệu Thêm mới (Không cho phép gửi Id, Rating...)
@@ -18,6 +20,7 @@ public class ProductCreateDto
     public int CategoryId { get; set; }
     public required string Name { get; set; }
     public decimal BasePrice { get; set; }
+    public string? ImageUrl { get; set; }
 }
 
 // 3. DTO dùng để client Cập nhật (Chỉ cho phép sửa tên, giá, trạng thái)

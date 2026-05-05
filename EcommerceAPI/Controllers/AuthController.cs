@@ -129,8 +129,7 @@ namespace EcommerceAPI.Controllers
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
                 _configuration.GetSection("JwtConfig:Secret").Value!));
 
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
-
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
             var token = new JwtSecurityToken(
                 claims: claims,
                 expires: DateTime.UtcNow.AddDays(7), // Token có hạn 7 ngày

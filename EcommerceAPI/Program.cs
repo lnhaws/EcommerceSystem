@@ -14,7 +14,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // =========================================================
 // 1. CẤU HÌNH BẢO MẬT JWT (Lấy chìa khóa từ appsettings.json)
 // =========================================================
-var jwtSecret = builder.Configuration.GetSection("JwtConfig:Secret").Value;
+var jwtSecret = builder.Configuration["JwtConfig:Secret"];
+
+// Thêm dòng kiểm tra này để nếu appsettings.json bị lỗi, app sẽ báo ngay lúc chạy
+if (string.IsNullOrEmpty(jwtSecret))
+{
+    throw new Exception("LỖI NGHIÊM TRỌNG: Không tìm thấy JwtConfig:Secret trong file appsettings.json!");
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -23,10 +29,12 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    options.UseSecurityTokenValidators = true;
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!)),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
         ValidateIssuer = false,   // Trong thực tế đưa lên host, bạn nên đổi thành true
         ValidateAudience = false, // Trong thực tế đưa lên host, bạn nên đổi thành true
         ValidateLifetime = true,
@@ -37,24 +45,35 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
+// CẤU HÌNH CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder =>
+        {
+            builder.AllowAnyOrigin()
+                   .AllowAnyMethod()
+                   .AllowAnyHeader();
+        });
+});
+
 // =========================================================
-// 2. CẤU HÌNH SWAGGER (Thêm ổ khóa Authorize góc phải)
+// 2. CẤU HÌNH SWAGGER
 // =========================================================
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Ecommerce API", Version = "v1" });
 
-    // Định nghĩa form nhập Token
+    // Đổi Type thành Http để Swagger TỰ ĐỘNG dán chữ "Bearer " cho bạn
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "Nhập Token vào đây. Chú ý: Gõ chữ 'Bearer ' ở trước khoảng trắng rồi mới dán token vào! Ví dụ: Bearer eyJhb...",
+        Description = "CHỈ CẦN DÁN TOKEN VÀO Ô BÊN DƯỚI (Tuyệt đối không copy dấu ngoặc kép, không cần gõ chữ Bearer).",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
+        Type = SecuritySchemeType.Http,
         Scheme = "Bearer"
     });
 
-    // Ép Swagger phải gửi Token vào Header của mỗi request
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -65,8 +84,8 @@ builder.Services.AddSwaggerGen(c =>
                     Type = ReferenceType.SecurityScheme,
                     Id = "Bearer"
                 }
-            },
-            Array.Empty<string>()
+            }
+            ,Array.Empty<string>()
         }
     });
 });
@@ -74,6 +93,8 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // --- BẮT ĐẦU: TỰ ĐỘNG CẬP NHẬT DATABASE KHI CHẠY ---
+// Lưu ý: Khi đưa lên Somee, nếu User không có quyền CREATE TABLE, đoạn này có thể gây lỗi. 
+// Hiện tại mình vẫn giữ nguyên theo ý bạn, vì bạn đã chạy Script trực tiếp rồi nên đoạn này sẽ bị bỏ qua an toàn.
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -94,16 +115,32 @@ using (var scope = app.Services.CreateScope())
 }
 // --- KẾT THÚC ---
 
+// =========================================================
+// 3. CẤU HÌNH MIDDLEWARE & TÍCH HỢP GIAO DIỆN REACT
+// =========================================================
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Ecommerce API V1");
+    // Không dùng c.RoutePrefix = string.Empty nữa vì đường dẫn gốc đã nhường cho giao diện React
+});
 
 app.UseHttpsRedirection();
 
-// =========================================================
-// 3. KÍCH HOẠT ĐƯỜNG ỐNG BẢO MẬT (Thứ tự cực kỳ quan trọng)
-// =========================================================
+// ---> 2 DÒNG QUAN TRỌNG ĐỂ C# ĐỌC ĐƯỢC GIAO DIỆN REACT <---
+app.UseDefaultFiles(); // Tự động lấy file index.html làm trang chủ
+app.UseStaticFiles();  // Cho phép lấy các file .js, .css trong wwwroot
+
+app.UseRouting();
+app.UseCors("AllowAll");
+
+// KÍCH HOẠT ĐƯỜNG ỐNG BẢO MẬT (Thứ tự cực kỳ quan trọng)
 app.UseAuthentication(); // 1. Hỏi giấy thông hành (Token) TRƯỚC
 app.UseAuthorization();  // 2. Xét quyền hạn (Role) SAU
 
 app.MapControllers();
+
+// ---> DÒNG QUAN TRỌNG ĐỂ ĐIỀU HƯỚNG REACT ROUTER BỀN BỈ <---
+app.MapFallbackToFile("/index.html");
+
 app.Run();
