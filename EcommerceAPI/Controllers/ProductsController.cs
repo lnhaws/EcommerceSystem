@@ -82,31 +82,59 @@ namespace EcommerceAPI.Controllers
         }
 
         // PUT: api/Products/5
-        [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> PutProduct(Guid id, ProductUpdateDto dto)
+[HttpPut("{id}")]
+[Authorize(Roles = "Admin")]
+public async Task<IActionResult> PutProduct(Guid id, ProductUpdateDto dto)
+{
+    // 1. Tìm sản phẩm
+    var product = await _context.Products.FindAsync(id);
+    if (product == null) return NotFound();
+
+    // 2. Cập nhật thông tin cơ bản
+    product.Name = dto.Name;
+    product.BasePrice = dto.BasePrice;
+    product.CategoryId = dto.CategoryId;
+    product.Status = dto.Status;
+
+    // 3. Xử lý cập nhật ảnh (Cực kỳ quan trọng)
+    if (!string.IsNullOrEmpty(dto.ImageUrl))
+    {
+        // Tìm xem sản phẩm này đã có ảnh chính chưa
+        var existingMainImage = await _context.ProductImages
+            .FirstOrDefaultAsync(i => i.ProductId == id && i.IsMain);
+
+        if (existingMainImage != null)
         {
-            var product = await _context.Products.FindAsync(id);
-            if (product == null) return NotFound();
-
-            product.Name = dto.Name;
-            product.BasePrice = dto.BasePrice;
-            product.CategoryId = dto.CategoryId;
-            product.Status = dto.Status;
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!ProductExists(id)) return NotFound();
-                else throw;
-            }
-
-            return NoContent();
+            // Nếu đã có ảnh thì chỉ cần ghi đè URL mới
+            existingMainImage.ImageUrl = dto.ImageUrl;
         }
+        else
+        {
+            // Nếu sản phẩm chưa có ảnh (trước đó bị null), thì tạo record mới
+            _context.ProductImages.Add(new ProductImage
+            {
+                Id = Guid.NewGuid(),
+                ProductId = id,
+                ImageUrl = dto.ImageUrl,
+                IsMain = true,
+                DisplayOrder = 1
+            });
+        }
+    }
 
+    // 4. Lưu vào Database
+    try
+    {
+        await _context.SaveChangesAsync();
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        if (!ProductExists(id)) return NotFound();
+        else throw;
+    }
+
+    return NoContent();
+}
         // POST: api/Products
         [HttpPost]
         [Authorize(Roles = "Admin")]
