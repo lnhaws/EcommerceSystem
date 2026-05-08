@@ -30,4 +30,5 @@ public class ProductUpdateDto
     public required string Name { get; set; }
     public decimal BasePrice { get; set; }
     public required string Status { get; set; }
+    public string? ImageUrl { get; set; }
 }
